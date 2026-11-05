@@ -1,6 +1,6 @@
 {
   "name": "paper-ai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "化学 AI 改卷台 —— 本地 Node 服务（Windows / macOS 通用）",

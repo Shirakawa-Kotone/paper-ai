@@ -28,6 +28,7 @@ export const PROVIDERS: (AiProvider & { models: { text: string[]; vision: string
     supportsVision: true,
     supportsJsonMode: true,
     keyHint: 'OpenCode Zen 控制台生成的 key',
+    reasoningEffort: 'low',
     docs: 'https://opencode.ai/docs/go/',
     // Zen 要求带上会话头，同一会话的上游保持一致，提示词缓存也更容易命中
     extraHeaders: { 'x-opencode-session': 'paper-ai', 'x-opencode-client': 'paper-ai' },
@@ -139,6 +140,8 @@ export type Msg = { role: 'system' | 'user' | 'assistant'; content: string | Con
 
 export type ChatOptions = {
   model: string;
+  /** 部分厂商（OpenCode Go / DeepSeek 推理模型）需要显式指定思考强度 */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | null;
   messages: Msg[];
   json?: boolean;
   maxTokens?: number;
@@ -224,7 +227,7 @@ export class LlmClient {
     throw lastErr instanceof Error ? lastErr : new LlmError(String(lastErr));
   }
 
-  private async once(opts: ChatOptions): Promise<ChatResult> {
+  private async once(opts: ChatOptions, escalate = 0): Promise<ChatResult> {
     const body: Record<string, unknown> = {
       model: opts.model,
       messages: opts.messages,
@@ -232,6 +235,12 @@ export class LlmClient {
     };
     if (opts.maxTokens) body.max_tokens = opts.maxTokens;
     if (opts.json && this.cfg.jsonMode) body.response_format = { type: 'json_object' };
+
+    const providerDefaults = PROVIDERS.find((p) => p.id === this.cfg.provider) as
+      | { reasoningEffort?: string }
+      | undefined;
+    const effort = opts.reasoningEffort ?? providerDefaults?.reasoningEffort;
+    if (effort) body.reasoning_effort = effort;
 
     const url = joinURL(this.baseURL, '/chat/completions');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -269,7 +278,7 @@ export class LlmClient {
       }
       // 部分厂商不支持 response_format，去掉后重试一次
       if (res.status === 400 && opts.json && /response_format|json_object/i.test(detail)) {
-        return this.once({ ...opts, json: false });
+        return this.once({ ...opts, json: false }, escalate);
       }
       const friendly =
         res.status === 401
@@ -289,9 +298,32 @@ export class LlmClient {
       usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
       model?: string;
     };
-    const text = data.choices?.[0]?.message?.content ?? '';
+    const choice = data.choices?.[0] as
+      | { message?: { content?: string | null; reasoning_content?: string | null }; finish_reason?: string }
+      | undefined;
+    const text = choice?.message?.content ?? '';
+    const thinking = String(choice?.message?.reasoning_content ?? '');
+
     if (!text.trim()) {
-      throw new LlmError('模型返回了空内容，请重试；若持续出现，可能是内容被安全策略拦截');
+      // 推理模型常把 token 全花在思考上，导致 content 为空（finish_reason=length）。
+      // 先加预算、压低思考强度重试一次；仍为空就把思考内容里能捞到的 JSON 用起来。
+      if (escalate < 1) {
+        return this.once(
+          {
+            ...opts,
+            maxTokens: Math.max(4096, (opts.maxTokens ?? 2000) * 2),
+            reasoningEffort: 'low',
+          },
+          escalate + 1,
+        );
+      }
+      if (thinking.trim()) {
+        return { text: thinking, model: data.model ?? opts.model };
+      }
+      throw new LlmError(
+        `模型返回了空内容（finish_reason=${choice?.finish_reason ?? '未知'}）。` +
+          '多半是思考占满了输出预算，或内容被上游拦截；换一个模型名再试',
+      );
     }
     return {
       text,

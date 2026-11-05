@@ -58,7 +58,7 @@ export async function transcribeCrops(
   const res = await deps.llm.chat({
     model: deps.llm.visionModel,
     json: true,
-    maxTokens: 3000,
+    maxTokens: 4096,
     temperature: 0,
     messages: [
       {

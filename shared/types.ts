@@ -167,6 +167,8 @@ export type AiProvider = {
   supportsJsonMode: boolean;
   keyHint: string;
   docs: string;
+  /** 该服务商默认的思考强度（推理模型需要；不填就不发这个参数） */
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'max';
 };
 
 
