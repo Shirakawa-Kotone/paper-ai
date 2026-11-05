@@ -72,14 +72,52 @@ export function normalizeNo(raw: unknown): string {
   return m ? m[1] : s;
 }
 
-function buildNoIndex(questions: Question[]): Map<string, Question> {
-  const map = new Map<string, Question>();
+/**
+ * 保留层级的题号键：15-4-1 就是 "15-4-1"，不会被截成 "15"。
+ * 句点、全角数字、第/题、尾部标点都会归一。
+ */
+export function keyOfNo(raw: unknown): string {
+  let s = String(raw ?? '').trim();
+  s = s.replace(/[\uFF10-\uFF19]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  s = s.replace(/^\s*(?:第|[Qq])\s*/, '').replace(/\s*题\s*$/, '');
+  s = s.replace(/^[（(\[【]+/, '');
+  s = s.replace(/[、。:：,，)）\]】》]+$/g, '');
+  s = s.replace(/[.．·]/g, '-');
+  return s.replace(/\s+/g, '').toUpperCase();
+}
+
+/**
+ * 题号解析器：优先精确匹配（含子题号），退让到数字前缀时**必须唯一**，
+ * 否则返回 undefined —— 宁可让这一格标复核，也不能把 15-4-1 的答案塞给 15-1。
+ */
+export function makeNoResolver(questions: Question[]): (raw: unknown) => Question | undefined {
+  const push = (m: Map<string, Question[]>, k: string, q: Question) => {
+    const arr = m.get(k);
+    if (arr) arr.push(q);
+    else m.set(k, [q]);
+  };
+
+  const exact = new Map<string, Question[]>();
+  const loose = new Map<string, Question[]>();
+  const leading = new Map<string, Question[]>();
   for (const q of questions) {
-    map.set(normalizeNo(q.no), q);
-    const num = q.no.match(/\d+/)?.[0];
-    if (num) map.set(normalizeNo(num), q);
+    push(exact, keyOfNo(q.no), q);
+    push(loose, normalizeNo(q.no), q);
+    const m = q.no.match(/^0*(\d+(?:[-.]\d+)*)/);
+    if (m) push(leading, m[1].replace(/[.．]/g, '-'), q);
   }
-  return map;
+
+  return (raw: unknown) => {
+    const k = keyOfNo(raw);
+    if (!k) return undefined;
+    const e = exact.get(k);
+    if (e?.length === 1) return e[0];
+    const l = loose.get(normalizeNo(k));
+    if (l?.length === 1) return l[0];
+    const g = leading.get(k);
+    if (g?.length === 1) return g[0];
+    return undefined;
+  };
 }
 
 /* ------------------------------- 文本层判断 ------------------------------ */
@@ -158,7 +196,7 @@ export async function recognizeSheet(
 
   const textResult = await extractText(buffer, { maxPages: 12 });
   const textMode = looksLikeTextLayer(textResult.text, questions);
-  const noIndex = buildNoIndex(questions);
+  const resolveNo = makeNoResolver(questions);
 
   // 没有定位块的"年级组答题卡"：靠版面分析（选项框 / 横线）切分
   if (!textMode) {
@@ -239,8 +277,7 @@ export async function recognizeSheet(
 
   const collected: RecognizeOutcome['answers'] = [];
   const push = (rawNo: unknown, rawContent: unknown, rawConf: unknown) => {
-    const key = normalizeNo(rawNo);
-    const q = noIndex.get(key);
+    const q = resolveNo(rawNo);
     if (!q) return;
     const content = String(rawContent ?? '').trim();
     const conf = rawConf == null || Number.isNaN(Number(rawConf)) ? null : Math.max(0, Math.min(1, Number(rawConf)));
@@ -411,9 +448,9 @@ async function gradeWithAi(
   const arr = Array.isArray(parsed?.items) ? parsed!.items : Array.isArray(parsed) ? (parsed as unknown as AiGrade[]) : [];
   if (!arr.length) throw new Error('评分结果不是预期的 JSON 结构');
 
-  const byNo = new Map(questions.map((q) => [normalizeNo(q.no), q]));
+  const resolveNo = makeNoResolver(questions);
   for (const item of arr) {
-    const q = byNo.get(normalizeNo(item.no));
+    const q = resolveNo(item.no);
     if (!q) continue;
     const score = Number(item.score);
     if (!Number.isFinite(score)) continue;

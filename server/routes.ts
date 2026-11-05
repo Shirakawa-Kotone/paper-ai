@@ -543,14 +543,24 @@ export function buildApi(ctx: AppContext) {
     if (!ai.baseURL) return c.json({ error: '请先在设置中配置模型接口' }, 400);
     if (!ai.textModel) return c.json({ error: '请先配置文本模型' }, 400);
 
-    const job = jobs.createJob('grade', examId, pool.length);
-    jobs.log(job, 'info', `开始批改 ${pool.length} 份答题卡（并发 ${ai.concurrency}）`);
+    // 非强制模式下跳过"每题都已有评分"的答题卡，避免重复烧钱
+    const fullyGraded = (sh: (typeof pool)[number]) => detail.questions.every((q) => sh.grades[q.id]);
+    const targets = body.force ? pool : pool.filter((sh) => !fullyGraded(sh));
+    if (!targets.length) {
+      return c.json(
+        { error: '这些答题卡都已经批改过了；要重跑请点「全部重批」（会重新调用模型）' },
+        400,
+      );
+    }
+
+    const job = jobs.createJob('grade', examId, targets.length);
+    jobs.log(job, 'info', `开始批改 ${targets.length} 份答题卡（并发 ${ai.concurrency}）`);
 
     void (async () => {
       try {
         const d = deps(job, detail.subject);
         await jobs.runPool(
-          pool,
+          targets,
           Math.max(1, Math.min(ai.concurrency, 6)),
           async (sh) => {
             jobs.setCurrent(job, sh.studentName || sh.fileName);

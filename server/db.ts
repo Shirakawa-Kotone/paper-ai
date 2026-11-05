@@ -101,6 +101,10 @@ function migrate() {
   ensureColumn('exam', 'layout_at', 'layout_at TEXT');
   ensureColumn('answer', 'crop', 'crop TEXT');
   ensureColumn('answer', 'mode', 'mode TEXT');
+
+  // 历史数据里题目换过 id，会留下指向已删题目的作答/评分；启动时清一次
+  db.exec('DELETE FROM answer WHERE question_id NOT IN (SELECT id FROM question)');
+  db.exec('DELETE FROM grade WHERE question_id NOT IN (SELECT id FROM question)');
 }
 
 function ensureColumn(table: string, column: string, ddl: string) {
@@ -230,6 +234,10 @@ export function replaceQuestions(examId: string, list: Omit<Question, 'examId'>[
     list.forEach((q, i) => {
       insert.run(q.id || randomUUID(), examId, q.no, q.kind, q.maxScore, q.answer ?? '', q.rubric ?? '', i);
     });
+    // 题目换了 id 后，指向旧题的作答和评分会变成孤儿（成绩单里会重复计数），一并清掉
+    db.prepare('DELETE FROM answer WHERE question_id NOT IN (SELECT id FROM question)').run();
+    db.prepare('DELETE FROM grade WHERE question_id NOT IN (SELECT id FROM question)').run();
+
     db.prepare('UPDATE exam SET updated_at = ? WHERE id = ?').run(now(), examId);
     db.exec('COMMIT');
   } catch (err) {

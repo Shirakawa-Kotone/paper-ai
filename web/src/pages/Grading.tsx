@@ -7,7 +7,10 @@ import { Icon } from '../icons.tsx';
 
 export function GradingPage({ exam, reload }: { exam: ExamDetail; reload: () => Promise<void> }) {
   const toast = useToast();
-  const job = useJob(() => void reload());
+  const job = useJob(() => {
+    toast('批改完成，结果已刷新', 'ok');
+    void reload();
+  });
   const [forceManual, setForceManual] = useState(false);
 
   const ready = useMemo(() => exam.sheets.filter((s) => Object.keys(s.answers).length > 0), [exam.sheets]);
@@ -44,6 +47,7 @@ export function GradingPage({ exam, reload }: { exam: ExamDetail; reload: () => 
         forceManual,
       });
       job.start(r.job);
+      toast(force ? '已提交全部重批' : '已提交批改', 'ok');
     } catch (e) {
       toast((e as Error).message, 'bad');
     }
