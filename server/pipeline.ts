@@ -403,7 +403,7 @@ async function gradeWithAi(
       { role: 'user', content: `学生作答：\n${JSON.stringify(studentAnswers)}\n\n请逐题评分。` },
     ],
     json: true,
-    maxTokens: 2500,
+    maxTokens: 4000,
     temperature: 0,
   });
 

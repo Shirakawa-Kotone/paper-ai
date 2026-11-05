@@ -289,6 +289,12 @@ export class LlmClient {
       if (res.status === 400 && opts.json && /response_format|json_object/i.test(detail)) {
         return this.once({ ...opts, json: false }, escalate);
       }
+      // 有些厂商的输出上限比我们开的小，遇到就减半再来
+      if (res.status === 400 && opts.maxTokens && /max[_-]?tokens|max output|too large|超过/i.test(detail)) {
+        if (escalate < 2) {
+          return this.once({ ...opts, maxTokens: Math.max(1024, Math.floor(opts.maxTokens / 2)) }, escalate + 1);
+        }
+      }
       const friendly =
         res.status === 401
           ? 'API Key 无效或已过期（401），请到设置里重新填写'

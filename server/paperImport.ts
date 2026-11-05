@@ -127,7 +127,7 @@ export async function importPaper(
     ];
   }
 
-  const res = await deps.llm.chat({ model, messages, json: true, maxTokens: 4000, temperature: 0, thinking: 'disabled' });
+  const res = await deps.llm.chat({ model, messages, json: true, maxTokens: 8000, temperature: 0, thinking: 'disabled' });
   const parsed = extractJson<{
     title?: string;
     notes?: string;

@@ -58,7 +58,7 @@ export async function transcribeCrops(
   const res = await deps.llm.chat({
     model: deps.llm.visionModel,
     json: true,
-    maxTokens: 4096,
+    maxTokens: 8000,
     temperature: 0,
     thinking: 'disabled', // 纯抄录，不需要思考链
     messages: [
