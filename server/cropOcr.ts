@@ -60,6 +60,7 @@ export async function transcribeCrops(
     json: true,
     maxTokens: 4096,
     temperature: 0,
+    thinking: 'disabled', // 纯抄录，不需要思考链
     messages: [
       {
         role: 'system',

@@ -142,6 +142,8 @@ export type ChatOptions = {
   model: string;
   /** 部分厂商（OpenCode Go / DeepSeek 推理模型）需要显式指定思考强度 */
   reasoningEffort?: 'low' | 'medium' | 'high' | 'max' | null;
+  /** DeepSeek 官方 API 的思考模式开关（默认开着，且 effort=high，会把 token 烧在思考上） */
+  thinking?: 'enabled' | 'disabled';
   messages: Msg[];
   json?: boolean;
   maxTokens?: number;
@@ -241,6 +243,13 @@ export class LlmClient {
       | undefined;
     const effort = opts.reasoningEffort ?? providerDefaults?.reasoningEffort;
     if (effort) body.reasoning_effort = effort;
+
+    // DeepSeek 官方接口才有 thinking 开关，别给其他厂商发未知字段
+    if (opts.thinking) {
+      const isDeepSeek =
+        this.cfg.provider === 'deepseek' || /api\.deepseek\.com/i.test(this.baseURL);
+      if (isDeepSeek) body.thinking = { type: opts.thinking };
+    }
 
     const url = joinURL(this.baseURL, '/chat/completions');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
