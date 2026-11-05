@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLeaveGuard } from '../guard.tsx';
 import type { ExamDetail, Question, QuestionKind } from '../../../shared/types.ts';
 import { QUESTION_KINDS } from '../../../shared/types.ts';
 import { api } from '../api.ts';
@@ -53,6 +54,7 @@ export function QuestionsPage({ exam, reload }: { exam: ExamDetail; reload: () =
   const [drafts, setDrafts] = useState<Draft[]>(() => exam.questions.map(toDraft));
   const [saving, setSaving] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const { setDirty: markDirty, registerSave } = useLeaveGuard();
   const [paperOpen, setPaperOpen] = useState(false);
   const [paperBusy, setPaperBusy] = useState(false);
   const [paperError, setPaperError] = useState('');
@@ -85,6 +87,13 @@ export function QuestionsPage({ exam, reload }: { exam: ExamDetail; reload: () =
   }, [drafts, exam.questions]);
 
   const total = drafts.reduce((a, d) => a + (Number(d.maxScore) || 0), 0);
+
+  // 有未保存改动时，切页面/关标签都会先确认
+  useEffect(() => {
+    markDirty(dirty);
+    return () => markDirty(false);
+  }, [dirty, markDirty]);
+
 
   const patch = (key: string, p: Partial<Draft>) =>
     setDrafts((prev) => prev.map((d) => (d.key === key ? { ...d, ...p } : d)));
@@ -123,11 +132,11 @@ export function QuestionsPage({ exam, reload }: { exam: ExamDetail; reload: () =
     return null;
   };
 
-  const save = async () => {
+  const save = async (): Promise<boolean> => {
     const err = validate();
     if (err) {
       toast(err, 'bad');
-      return;
+      return false;
     }
     setSaving(true);
     try {
@@ -143,13 +152,24 @@ export function QuestionsPage({ exam, reload }: { exam: ExamDetail; reload: () =
         })),
       );
       await reload();
+      markDirty(false);
       toast('试题已保存', 'ok');
+      return true;
     } catch (e) {
       toast((e as Error).message, 'bad');
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  // 让"保存并离开"能调用到最新的 save
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    registerSave(() => saveRef.current());
+    return () => registerSave(null);
+  }, [registerSave]);
 
   const parsePaper = async (file: File) => {
     setPaperBusy(true);

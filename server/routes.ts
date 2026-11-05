@@ -56,6 +56,15 @@ export type AppContext = { dataDir: string };
 
 const nowISO = () => new Date().toISOString();
 
+/** 版本号从根 package.json 读，避免每处手写 */
+const VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8')).version as string;
+  } catch {
+    return '0.0.0';
+  }
+})();
+
 export function buildApi(ctx: AppContext) {
   const api = new Hono();
 
@@ -81,7 +90,7 @@ export function buildApi(ctx: AppContext) {
   api.get('/health', (c) =>
     c.json({
       ok: true,
-      version: '0.1.0',
+      version: VERSION,
       node: process.version,
       dataDir: ctx.dataDir,
       time: nowISO(),

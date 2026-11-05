@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ExamDetail } from '../../shared/types.ts';
 import { api, type ExamSummary } from './api.ts';
 import { Icon } from './icons.tsx';
@@ -9,7 +9,8 @@ import { GradingPage } from './pages/Grading.tsx';
 import { ReportPage } from './pages/Report.tsx';
 import { ReviewPage } from './pages/Review.tsx';
 import { PrintPage } from './pages/Print.tsx';
-import { Spinner, ToastProvider, useToast } from './components/ui.tsx';
+import { Modal, Spinner, ToastProvider, useToast } from './components/ui.tsx';
+import { LeaveGuardProvider, useLeaveGuard } from './guard.tsx';
 
 type Tab = 'questions' | 'sheets' | 'grading' | 'review' | 'report';
 type Route = { kind: 'list' } | { kind: 'exam'; id: string; tab: Tab } | { kind: 'print'; id: string };
@@ -35,11 +36,35 @@ function AppInner() {
   const [loadingExam, setLoadingExam] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  const guard = useLeaveGuard();
+  const [pendingHash, setPendingHash] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const allowNextHash = useRef(false);
+  const lastHash = useRef(window.location.hash);
+
   useEffect(() => {
-    const onHash = () => setRoute(parseHash());
+    const onHash = () => {
+      // 程序内跳转，直接放行
+      if (allowNextHash.current) {
+        allowNextHash.current = false;
+        lastHash.current = window.location.hash;
+        setRoute(parseHash());
+        return;
+      }
+      // 浏览器前进/后退：有未保存改动就回滚并询问
+      if (guard.dirty) {
+        const target = window.location.hash;
+        allowNextHash.current = true;
+        window.location.hash = lastHash.current;
+        setPendingHash(target);
+        return;
+      }
+      lastHash.current = window.location.hash;
+      setRoute(parseHash());
+    };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
-  }, []);
+  }, [guard.dirty]);
 
   const loadExams = useCallback(async () => {
     setLoadingExams(true);
@@ -73,7 +98,30 @@ function AppInner() {
   }, [route, loadExams, loadExam]);
 
   const go = (hash: string) => {
+    if (guard.dirty) {
+      setPendingHash(hash);
+      return;
+    }
+    allowNextHash.current = true;
     window.location.hash = hash;
+  };
+
+  const leaveNow = (hash: string) => {
+    guard.setDirty(false);
+    allowNextHash.current = true;
+    setPendingHash(null);
+    window.location.hash = hash;
+  };
+
+  const saveAndLeave = async () => {
+    if (!pendingHash) return;
+    setLeaving(true);
+    try {
+      const ok = await guard.runSave();
+      if (ok) leaveNow(pendingHash);
+    } finally {
+      setLeaving(false);
+    }
   };
 
   const reloadExam = useCallback(async () => {
@@ -129,6 +177,28 @@ function AppInner() {
       ) : null}
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      <Modal
+        open={!!pendingHash}
+        title="题目还没保存"
+        onClose={() => setPendingHash(null)}
+        footer={
+          <>
+            <button className="btn" onClick={() => setPendingHash(null)}>
+              继续编辑
+            </button>
+            <button className="btn btn-danger" onClick={() => pendingHash && leaveNow(pendingHash)}>
+              放弃改动
+            </button>
+            <button className="btn btn-primary" onClick={() => void saveAndLeave()} disabled={leaving}>
+              {leaving ? <Spinner light /> : null}
+              保存并离开
+            </button>
+          </>
+        }
+      >
+        <p style={{ lineHeight: 1.8 }}>「试题」页有未保存的改动，现在离开会丢掉。</p>
+      </Modal>
     </div>
   );
 }
@@ -136,7 +206,9 @@ function AppInner() {
 export default function App() {
   return (
     <ToastProvider>
-      <AppInner />
+      <LeaveGuardProvider>
+        <AppInner />
+      </LeaveGuardProvider>
     </ToastProvider>
   );
 }
