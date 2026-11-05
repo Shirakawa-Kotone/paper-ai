@@ -10,7 +10,7 @@
  * 需要联网下载 Node 官方运行时；依赖在目标平台上预装（用 npm 的 --os/--cpu 交叉拉取原生模块）。
  */
 import fs from 'node:fs/promises';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -67,9 +67,12 @@ const log = (s) => console.log(`  ${s}`);
 const run = (cmd, cmdArgs, opts = {}) =>
   execFileSync(cmd, cmdArgs, { stdio: 'inherit', cwd: ROOT, ...opts });
 
+// 版本号跟根 package.json 保持一致，避免包里写死旧版本
+const ROOT_PKG = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+
 const SLIM_PACKAGE = {
   name: 'paper-ai',
-  version: '0.1.0',
+  version: ROOT_PKG.version,
   private: true,
   type: 'module',
   description: '化学 AI 改卷台（免安装版）',
