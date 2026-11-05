@@ -1,0 +1,44 @@
+{
+  "name": "paper-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "化学 AI 改卷台 —— 本地 Node 服务（Windows / macOS 通用）",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "start": "node server/main.ts",
+    "start:env": "node --env-file=.env server/main.ts",
+    "dev:api": "node --watch server/main.ts",
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build",
+    "seed": "node scripts/seed.mjs",
+    "mock": "node scripts/mock-provider.mjs",
+    "check": "node scripts/check-env.mjs",
+    "package:win": "node scripts/package.mjs --target win64",
+    "package:mac": "node scripts/package.mjs --target mac-arm64",
+    "diagnose": "node scripts/diagnose.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.6",
+    "@napi-rs/canvas": "^1.1.0",
+    "exceljs": "^4.4.0",
+    "hono": "^4.13.16",
+    "pdf-lib": "^1.17.1",
+    "pdf-to-img": "^7.0.2",
+    "pdfjs-dist": "^6.4.299",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
