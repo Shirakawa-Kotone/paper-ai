@@ -124,7 +124,7 @@ async function main() {
   await copyDir(path.join(ROOT, 'server'), path.join(APP_DIR, 'server'));
   await copyDir(path.join(ROOT, 'shared'), path.join(APP_DIR, 'shared'));
   await copyDir(path.join(ROOT, 'web', 'dist'), path.join(APP_DIR, 'web', 'dist'));
-  await copyDir(path.join(ROOT, 'tools'), path.join(APP_DIR, 'tools'));
+  if (existsSync(path.join(ROOT, 'tools'))) await copyDir(path.join(ROOT, 'tools'), path.join(APP_DIR, 'tools'));
   await fs.copyFile(path.join(ROOT, 'README.md'), path.join(APP_DIR, 'README.md'));
   await fs.writeFile(path.join(APP_DIR, 'package.json'), JSON.stringify(SLIM_PACKAGE, null, 2) + '\n');
 
